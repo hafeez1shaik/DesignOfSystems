@@ -1,0 +1,305 @@
+// Class: CustomerContext.java 
+package discountcalculation;
+
+public class CustomerContext {
+
+	private DiscountCoupon coupon;
+	private boolean isLoyaltyCustomer;
+	private boolean isEmployee;
+
+	public DiscountCoupon getCoupon() {
+		return coupon;
+	}
+
+	public void setCoupon(DiscountCoupon coupon) {
+		this.coupon = coupon;
+	}
+
+	public boolean isLoyalCustomer() {
+		return isLoyaltyCustomer;
+	}
+
+	public void setLoyaltyCustomer(boolean isLoyaltyCustomer) {
+		this.isLoyaltyCustomer = isLoyaltyCustomer;
+	}
+
+	public boolean isEmployee() {
+		return isEmployee;
+	}
+
+	public void setEmployee(boolean isEmployee) {
+		this.isEmployee = isEmployee;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: DiscountCalculator.java 
+package discountcalculation;
+
+import discountcalculation.DiscountLogger.Level;
+
+public class DiscountCalculator {
+
+	public static void main(String[] args) {
+		final double amount = 200.45;
+		DiscountLogger.log("Calculating Discounts with various Discount options", Level.INFO);
+		DiscountStrategy empDiscount = new GenericDiscountStrategy(DiscountCoupon.EMPLOYEE_DISCOUNT);
+		DiscountStrategy festDiscount = new GenericDiscountStrategy(DiscountCoupon.FESTIVAL_SALE);
+		DiscountStrategy flashDiscount = new GenericDiscountStrategy(DiscountCoupon.FLASH_SALE);
+		DiscountStrategy loyaltyDiscount = new GenericDiscountStrategy(DiscountCoupon.LOYALTY_COUPON);
+		DiscountStrategy compositeDiscount = new GenericDiscountStrategy(DiscountCoupon.FESTIVAL_SALE,
+				DiscountCoupon.FLASH_SALE);
+
+		DiscountLogger.logLineWithHeader("Prices after applying Discounts");
+		DiscountLogger.log("Employee Discounted Price : " + empDiscount.applyDiscount(amount), Level.INFO);
+		DiscountLogger.log("Festival Discounted Price : " + festDiscount.applyDiscount(amount), Level.INFO);
+		DiscountLogger.log("Flash Discounted Price : " + flashDiscount.applyDiscount(amount), Level.INFO);
+		DiscountLogger.log("Loyalty Discounted Price : " + loyaltyDiscount.applyDiscount(amount), Level.INFO);
+		DiscountLogger.log("Festival, Flash Discount Price : " + compositeDiscount.applyDiscount(amount), Level.INFO);
+		
+		
+		DiscountLogger.log("Calculating Discounts based on rules", Level.INFO);
+		CustomerContext context = new CustomerContext();
+		context.setCoupon(DiscountCoupon.EMPLOYEE_DISCOUNT);
+		context.setEmployee(true);
+		context.setLoyaltyCustomer(false);
+		
+		DiscountStrategy empDiscountV1 = new GenericDiscountStrategy(context);
+
+		DiscountLogger.logLineWithHeader("Prices after applying Discounts");
+		DiscountLogger.log("Employee Discounted Price : " + empDiscountV1.applyDiscount(amount), Level.INFO);
+		
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: DiscountCoupon.java 
+package discountcalculation;
+
+public enum DiscountCoupon {
+
+	FESTIVAL_SALE, FLASH_SALE, LOYALTY_COUPON, EMPLOYEE_DISCOUNT
+}
+ 
+==================================================== 
+ 
+// Class: DiscountExecutor.java 
+package discountcalculation;
+
+import java.lang.reflect.InvocationTargetException;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import org.reflections.Reflections;
+import org.reflections.scanners.Scanners;
+import org.reflections.util.ClasspathHelper;
+import org.reflections.util.ConfigurationBuilder;
+
+import discountcalculation.DiscountLogger.Level;
+
+public class DiscountExecutor {
+
+	private DiscountExecutor() {
+
+	}
+
+	protected static boolean execute(double MRP, CustomerContext context) {
+		Reflections reflections = new Reflections(new ConfigurationBuilder().setUrls(ClasspathHelper.forPackage("*")) // Scan
+																														// the
+																														// specific
+																														// package
+				.setScanners(Scanners.SubTypes, Scanners.TypesAnnotated) // Scanners to use
+		);
+
+		Pattern pattern = Pattern.compile(".*Rule");
+
+		Set<Class<? extends DiscountRule>> ruleClasses = reflections.getSubTypesOf(DiscountRule.class).stream()
+				.filter(clazz -> pattern.matcher(clazz.getName()).matches())
+				.collect(java.util.stream.Collectors.toSet());
+
+		boolean result = true;
+		for (Class<? extends DiscountRule> ruleClass : ruleClasses) {
+			try {
+				DiscountRule ruleInstance = ruleClass.getDeclaredConstructor().newInstance();
+				boolean isApplicable = ruleInstance.isRuleApplicable(MRP, context);
+				if (!isApplicable) {
+					result = false;
+					continue;
+				}
+			} catch (InstantiationException | IllegalAccessException | NoSuchMethodException
+					| InvocationTargetException e) {
+				DiscountLogger.log("Could not instantiate or execute method for class: " + ruleClass.getName(),
+						Level.ERROR);
+				result = false;
+			}
+		}
+		return result;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: DiscountLogger.java 
+package discountcalculation;
+
+public class DiscountLogger {
+
+	public enum Level {
+		INFO, ERROR, DEBUG
+	}
+
+	public static void log(String message, Level level) {
+		System.out.println("[" + level.name() + "] - " + message);
+	}
+
+	public static void logLineWithHeader(String message) {
+		System.out.println("===================" + message + "===================");
+	}
+}
+ 
+==================================================== 
+ 
+// Class: DiscountMap.java 
+package discountcalculation;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class DiscountMap {
+
+	// TODO This can read the discount map from properties in future
+
+	private DiscountMap() {
+
+	}
+
+	static Map<DiscountCoupon, Double> map = new HashMap<>();
+
+	static {
+		map.put(DiscountCoupon.EMPLOYEE_DISCOUNT, 40.00);
+		map.put(DiscountCoupon.FESTIVAL_SALE, 20.00);
+		map.put(DiscountCoupon.FLASH_SALE, 30.00);
+		map.put(DiscountCoupon.LOYALTY_COUPON, 50.00);
+
+	}
+
+	public static double getDiscountCoupon(DiscountCoupon coupon) {
+		return map.get(coupon);
+
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: DiscountRule.java 
+package discountcalculation;
+
+public interface DiscountRule {
+	
+	
+	boolean isRuleApplicable(double MRP, CustomerContext context);
+
+}
+ 
+==================================================== 
+ 
+// Class: DiscountStrategy.java 
+package discountcalculation;
+
+public interface DiscountStrategy {
+
+	double applyDiscount(double MRP);
+
+}
+ 
+==================================================== 
+ 
+// Class: EmployeeDiscountRule.java 
+package discountcalculation;
+
+public class EmployeeDiscountRule implements DiscountRule {
+
+	@Override
+	public boolean isRuleApplicable(double MRP, CustomerContext context) {
+		return context.isEmployee();
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: FlashDiscountRule.java 
+package discountcalculation;
+
+public class FlashDiscountRule implements DiscountRule {
+
+	@Override
+	public boolean isRuleApplicable(double MRP, CustomerContext context) {
+		return context.getCoupon() == DiscountCoupon.FLASH_SALE;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: GenericDiscountStrategy.java 
+package discountcalculation;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+public class GenericDiscountStrategy implements DiscountStrategy {
+	private DiscountCoupon[] coupons;
+	private CustomerContext context;
+
+	public GenericDiscountStrategy(DiscountCoupon... coupon) {
+		this.coupons = coupon;
+	}
+
+	public GenericDiscountStrategy(CustomerContext context) {
+		this.coupons = new DiscountCoupon[] { context.getCoupon() };
+		this.context = context;
+
+	}
+
+	@Override
+	public double applyDiscount(double MRP) {
+		if (context != null && !DiscountExecutor.execute(MRP, context))
+			return MRP;
+
+		double price = MRP;
+		for (DiscountCoupon coupon : coupons) {
+			price -= (DiscountMap.getDiscountCoupon(coupon) / 100) * price;
+		}
+
+		return getPrecisonValue(price);
+	}
+
+	private double getPrecisonValue(Double discountedPrice) {
+		return new BigDecimal(String.valueOf(discountedPrice)).setScale(2, RoundingMode.HALF_UP).doubleValue();
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: LoyaltyDiscountRule.java 
+package discountcalculation;
+
+public class LoyaltyDiscountRule implements DiscountRule {
+
+	@Override
+	public boolean isRuleApplicable(double MRP, CustomerContext context) {
+		return context.isLoyalCustomer();
+	}
+
+}
+ 
+==================================================== 
+ 
