@@ -1,0 +1,301 @@
+// Class: ConsoleLogger.java 
+package logger;
+
+public class ConsoleLogger implements Logger {
+
+	private String className;
+	private LogLevel logLevel = LogLevel.INFO;
+
+	public ConsoleLogger(String className) {
+		this.className = className;
+	}
+
+	private void printMessage(String message, LogLevel logLevel) {
+		System.out.println(MessageFormatter.formatMessage(message, this.className, logLevel));
+	}
+
+	private boolean shouldLog(LogLevel logLevel) {
+		switch (this.logLevel) {
+		case INFO:
+			return true;
+		case WARN:
+			return true;
+		case ERROR:
+			return logLevel == LogLevel.ERROR;
+		default:
+			return false;
+		}
+	}
+
+	private void log(String message, LogLevel messageLevel) {
+		if (shouldLog(messageLevel)) {
+			printMessage(message, messageLevel);
+		}
+	}
+
+	@Override
+	public void info(String message) {
+		log(message, LogLevel.INFO);
+	}
+
+	@Override
+	public void debug(String message) {
+		log(message, LogLevel.DEBUG);
+	}
+
+	@Override
+	public void error(String message) {
+		log(message, LogLevel.ERROR);
+	}
+
+	@Override
+	public void warn(String message) {
+		log(message, LogLevel.WARN);
+	}
+
+	@Override
+	public void setLogLevel(LogLevel level) {
+		this.logLevel = level;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: FileLogger.java 
+package logger;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class FileLogger implements Logger {
+	private String className;
+	private LogLevel logLevel = LogLevel.INFO;
+	private final FileWriter writer;
+	private boolean logConsole;
+	private Lock lock = new ReentrantLock();
+
+	public FileLogger(String classname) throws IOException {
+		this.className = classname;
+		File file = new File(System.getProperty("user.dir") + "/app.txt");
+		if (!file.exists()) {
+			file.createNewFile();
+		}
+		this.writer = new FileWriter(file, true);
+
+	}
+
+	public FileLogger(String className, String filePath) throws IOException {
+		this.className = className;
+		File file = new File(filePath);
+		if (!file.exists()) {
+			file.createNewFile();
+		}
+		this.writer = new FileWriter(file, true);
+	}
+
+	public void close() throws IOException {
+		if (writer != null) {
+			writer.close();
+		}
+	}
+
+	public void setConsoleLog(boolean flag) {
+		this.logConsole = flag;
+	}
+
+	private synchronized void printMessage(String message, LogLevel logLevel) {
+		lock.lock();
+		String formattedLogMessage = MessageFormatter.formatMessage(message, this.className, logLevel);
+		if (this.logConsole) {
+			System.out.println(formattedLogMessage);
+		}
+		try {
+			writer.write(formattedLogMessage + System.lineSeparator());
+			writer.flush();
+		} catch (IOException e) {
+			System.err.println("Error writing to log file: " + e.getMessage());
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	private boolean shouldLog(LogLevel messageLevel) {
+		return messageLevel.ordinal() >= this.logLevel.ordinal();
+	}
+
+	private void log(String message, LogLevel messageLevel) {
+
+		if (shouldLog(messageLevel)) {
+			printMessage(message, messageLevel);
+		}
+	}
+
+	@Override
+	public void info(String message) {
+		log(message, LogLevel.INFO);
+	}
+
+	@Override
+	public void debug(String message) {
+		log(message, LogLevel.DEBUG);
+	}
+
+	@Override
+	public void error(String message) {
+		log(message, LogLevel.ERROR);
+	}
+
+	@Override
+	public void warn(String message) {
+		log(message, LogLevel.WARN);
+	}
+
+	@Override
+	public void setLogLevel(LogLevel level) {
+		this.logLevel = level;
+	}
+}
+ 
+==================================================== 
+ 
+// Class: Logger.java 
+package logger;
+
+public interface Logger {
+
+	void setLogLevel(LogLevel level);
+
+	void info(String message);
+
+	void debug(String message);
+
+	void error(String message);
+
+	void warn(String message);
+
+}
+ 
+==================================================== 
+ 
+// Class: LoggerDemo.java 
+package logger;
+
+import java.io.IOException;
+
+public class LoggerDemo {
+    public static void main(String[] args) throws IOException {
+        // Step 1: Get a logger from the factory
+        Logger logger = LoggerFactory.getLogger("app", LoggerType.CONSOLE);
+        logger.setLogLevel(LogLevel.WARN);
+
+        // Step 2: Log messages at different levels
+        logger.info("Application started");
+        logger.warn("WARN started");
+        logger.debug("DEBUG started");
+        logger.error("ERROR started");
+
+        // Step 3: Switch to file logger
+        Logger fileLogger = LoggerFactory.getLogger("app", LoggerType.FILE);
+        fileLogger.setLogLevel(LogLevel.INFO);
+        fileLogger.info("This will be logged to a file");
+        fileLogger.error("File logging error example");
+        fileLogger.debug("DEBUG started");
+        fileLogger.error("ERROR started");
+    }
+}
+ 
+==================================================== 
+ 
+// Class: LoggerFactory.java 
+package logger;
+
+import java.io.IOException;
+
+public class LoggerFactory {
+
+	public static Logger getLogger(String clazz, LoggerType loggerType) throws IOException {
+
+		switch (loggerType) {
+		case CONSOLE:
+			return new ConsoleLogger(clazz);
+		case FILE:
+			return new FileLogger(clazz);
+		default:
+			return new ConsoleLogger(clazz);
+
+		}
+
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: LoggerType.java 
+package logger;
+
+public enum LoggerType {
+	CONSOLE, FILE
+}
+ 
+==================================================== 
+ 
+// Class: LogLevel.java 
+package logger;
+
+public enum LogLevel {
+
+	WARN(0), INFO(1), DEBUG(2), ERROR(3);
+
+	private int value;
+
+	LogLevel(int value) {
+		this.value = value;
+	}
+
+	public static LogLevel levelOf(int value) {
+
+		for (LogLevel level : LogLevel.values()) {
+			if (level.value == value) {
+				return LogLevel.levelOf(value);
+			}
+		}
+
+		return null;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: MessageFormatter.java 
+package logger;
+
+public class MessageFormatter {
+
+
+	private MessageFormatter() {
+
+	}
+
+	public static String formatMessage(String message, String clazz, LogLevel logLevel) {
+		return "["+java.time.LocalDateTime.now()+"] "+"["+logLevel.toString()+"] "+" ["+clazz+"] "+message;
+	}
+
+}
+ 
+==================================================== 
+ 
+// Class: LoggerTest.java 
+package logger.test;
+
+public class LoggerTest {
+
+}
+ 
+==================================================== 
+ 
